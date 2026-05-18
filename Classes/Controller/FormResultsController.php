@@ -67,6 +67,8 @@ use TYPO3\CMS\Form\Domain\DTO\SearchCriteria;
 use TYPO3\CMS\Form\Domain\Model\FormElements\AbstractFormElement;
 use TYPO3\CMS\Form\Mvc\Persistence\FormPersistenceManagerInterface;
 use TYPO3\CMS\Form\Slot\FilePersistenceSlot;
+use TYPO3\CMS\Form\Storage\FileMountStorageAdapter;
+use TYPO3\CMS\Form\Storage\StorageAdapterFactory;
 
 /**
  * Class FormResultsController
@@ -94,6 +96,8 @@ class FormResultsController extends FormManagerController
 
     protected FormResultDatabaseService $formResultDatabaseService;
 
+    protected StorageAdapterFactory $storageAdapterFactory;
+
     protected ModuleTemplate $moduleTemplate;
 
     /**
@@ -118,6 +122,11 @@ class FormResultsController extends FormManagerController
     public function injectExtConfUtility(ExtConfUtility $extConfUtility): void
     {
         $this->extConfUtility = $extConfUtility;
+    }
+
+    public function injectStorageAdapterFactory(StorageAdapterFactory $storageAdapterFactory): void
+    {
+        $this->storageAdapterFactory = $storageAdapterFactory;
     }
 
     protected function initializeAction(): void
@@ -533,7 +542,12 @@ class FormResultsController extends FormManagerController
     protected function getDeletedFormDefinitions(array $availableFormDefinitions): array
     {
         $accessibleDeletedFormDefinitions = [];
-        $storageFolders = $this->formPersistenceManager->getAccessibleFormStorageFolders($this->getFormSettings());
+        $fileMountAdapter = $this->storageAdapterFactory->hasAdapterType('filemount')
+            ? $this->storageAdapterFactory->getAdapterByType('filemount')
+            : null;
+        $storageFolders = ($fileMountAdapter instanceof FileMountStorageAdapter)
+            ? $fileMountAdapter->getAccessibleFormStorageFolders()
+            : [];
         /** @var FileExtensionFilter $filter */
         $filter = GeneralUtility::makeInstance(FileExtensionFilter::class);
         $filter->setAllowedFileExtensions(['deleted']);
