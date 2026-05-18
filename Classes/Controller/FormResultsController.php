@@ -489,11 +489,6 @@ class FormResultsController extends FormManagerController
             $form = $this->formPersistenceManager->load(
                 $formDefinition['persistenceIdentifier'],
                 $formSettings,
-                /**
-                 * Empty array in BE usages
-                 * @see FormPersistenceManagerInterface::load()
-                 */
-                []
             );
             $finisherInVariant = false;
             if (isset($form['variants'])) {
