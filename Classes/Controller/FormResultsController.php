@@ -632,7 +632,6 @@ class FormResultsController extends FormManagerController
         $configuration = $this->formPersistenceManager->load(
             $formPersistenceIdentifier,
             $this->getFormSettings(),
-            []
         );
 
         $this->hydrateRepeatableFields($configuration);
