@@ -62,6 +62,7 @@ use TYPO3\CMS\Form\Domain\Exception\TypeDefinitionNotFoundException;
 use TYPO3\CMS\Form\Domain\Exception\TypeDefinitionNotValidException;
 use TYPO3\CMS\Form\Domain\Factory\ArrayFormFactory;
 use TYPO3\CMS\Form\Domain\Model\FormDefinition;
+use TYPO3\CMS\Form\Domain\DTO\FormMetadata;
 use TYPO3\CMS\Form\Domain\DTO\SearchCriteria;
 use TYPO3\CMS\Form\Domain\Model\FormElements\AbstractFormElement;
 use TYPO3\CMS\Form\Mvc\Persistence\FormPersistenceManagerInterface;
@@ -483,7 +484,8 @@ class FormResultsController extends FormManagerController
     {
         $formResults = $this->formResultDatabaseService->getAllFormResultsForPersistenceIdentifier();
         $availableFormDefinitions = [];
-        foreach ($this->formPersistenceManager->listForms($formSettings, $searchCriteria) as $formDefinition) {
+        foreach ($this->formPersistenceManager->listForms($formSettings, $searchCriteria) as $formMetadata) {
+            $formDefinition = $formMetadata instanceof FormMetadata ? $formMetadata->toArray() : (array)$formMetadata;
             $form = $this->formPersistenceManager->load(
                 $formDefinition['persistenceIdentifier'],
                 $formSettings,
