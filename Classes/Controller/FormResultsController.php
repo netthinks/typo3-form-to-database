@@ -483,7 +483,7 @@ class FormResultsController extends FormManagerController
     {
         $formResults = $this->formResultDatabaseService->getAllFormResultsForPersistenceIdentifier();
         $availableFormDefinitions = [];
-        foreach ($this->formPersistenceManager->listForms($formSettings) as $formDefinition) {
+        foreach ($this->formPersistenceManager->listForms($formSettings, $searchCriteria) as $formDefinition) {
             $form = $this->formPersistenceManager->load(
                 $formDefinition['persistenceIdentifier'],
                 $formSettings,
