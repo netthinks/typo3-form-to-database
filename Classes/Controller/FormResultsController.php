@@ -51,6 +51,7 @@ use TYPO3\CMS\Core\Resource\Driver\LocalDriver;
 use TYPO3\CMS\Core\Resource\File;
 use TYPO3\CMS\Core\Resource\Filter\FileExtensionFilter;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
+use TYPO3\CMS\Core\Utility\CsvUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Persistence\Exception\IllegalObjectTypeException;
 use TYPO3\CMS\Extbase\Persistence\Exception\InvalidQueryException;
@@ -919,20 +920,20 @@ class FormResultsController extends FormManagerController
         );
 
         $header = [
-            self::CSV_ENCLOSURE . $this->getLanguageService()->sL('LLL:EXT:form_to_database/Resources/Private/Language/locallang_be.xlf:show.crdate') . self::CSV_ENCLOSURE,
+            $this->getLanguageService()->sL('LLL:EXT:form_to_database/Resources/Private/Language/locallang_be.xlf:show.crdate'),
         ];
 
         /** @var AbstractFormElement $renderable */
         foreach ($formRenderables as $renderable) {
-            $header[] = self::CSV_ENCLOSURE . $renderable->getLabel() . self::CSV_ENCLOSURE;
+            $header[] = $renderable->getLabel();
         }
-        $csvContent[] = implode($csvDelimiter, $header);
+        $csvContent[] = $this->csvLine($header, $csvDelimiter);
 
         /** @var FormResult $formResult */
         foreach ($formResults as $i => $formResult) {
             $resultsArray = $formResult->getResultAsArray();
             $content = [
-                self::CSV_ENCLOSURE . $formResult->getCrdate()->format(FormValueUtility::getDateFormat() . ' ' . FormValueUtility::getTimeFormat()) . self::CSV_ENCLOSURE,
+                $formResult->getCrdate()->format(FormValueUtility::getDateFormat() . ' ' . FormValueUtility::getTimeFormat()),
             ];
             foreach ($formRenderables as $renderable) {
                 $fieldValue = $resultsArray[$renderable->getIdentifier()] ?? '';
@@ -941,17 +942,33 @@ class FormResultsController extends FormManagerController
                     $fieldValue,
                     FormValueUtility::OUTPUT_TYPE_CSV
                 );
-                $cleanFieldValue = trim(str_replace(
-                    self::CSV_ENCLOSURE,
-                    '\\' . self::CSV_ENCLOSURE,
-                    $convertedFieldValue
-                ));
-                $content[] = self::CSV_ENCLOSURE . $cleanFieldValue . self::CSV_ENCLOSURE;
+                $content[] = trim((string)$convertedFieldValue);
             }
-            $csvContent[] = implode($csvDelimiter, $content);
+            $csvContent[] = $this->csvLine($content, $csvDelimiter);
         }
 
         return implode(self::CSV_LINEBREAK, $csvContent);
+    }
+
+    /**
+     * One CSV line via the core's CsvUtility instead of hand-made quoting.
+     *
+     * Visitors fill in these values, and a cell starting with =, +, -, @, % or a
+     * tab is run as a formula by Excel and LibreOffice - quoting alone does not
+     * stop that (CSV injection). TYPE_PREFIX_CONTROLS puts an apostrophe in
+     * front, so the value stays readable text. TYPE_REMOVE_CONTROLS would delete
+     * the character instead and turn "+49 7721 ..." into a number without its
+     * country code. The previous code also escaped quotes with a backslash,
+     * which spreadsheet programs do not understand; fputcsv doubles them.
+     *
+     * @param list<string> $cells
+     */
+    protected function csvLine(array $cells, string $delimiter): string
+    {
+        return rtrim(
+            CsvUtility::csvValues($cells, $delimiter, self::CSV_ENCLOSURE, CsvUtility::TYPE_PREFIX_CONTROLS),
+            "\r\n"
+        );
     }
 
     /**
