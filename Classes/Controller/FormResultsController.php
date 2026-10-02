@@ -44,6 +44,7 @@ use TYPO3\CMS\Core\Http\RedirectResponse;
 use TYPO3\CMS\Core\Http\Response;
 use TYPO3\CMS\Core\Http\StreamFactory;
 use TYPO3\CMS\Core\Imaging\IconSize;
+use TYPO3\CMS\Core\IO\CsvStreamFilter;
 use TYPO3\CMS\Core\Messaging\FlashMessageQueue;
 use TYPO3\CMS\Core\Pagination\ArrayPaginator;
 use TYPO3\CMS\Core\Pagination\SimplePagination;
@@ -51,8 +52,8 @@ use TYPO3\CMS\Core\Resource\Driver\LocalDriver;
 use TYPO3\CMS\Core\Resource\File;
 use TYPO3\CMS\Core\Resource\Filter\FileExtensionFilter;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
-use TYPO3\CMS\Core\Utility\CsvUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\Utility\MathUtility;
 use TYPO3\CMS\Extbase\Persistence\Exception\IllegalObjectTypeException;
 use TYPO3\CMS\Extbase\Persistence\Exception\InvalidQueryException;
 use TYPO3\CMS\Extbase\Persistence\Exception\UnknownObjectException;
@@ -951,24 +952,60 @@ class FormResultsController extends FormManagerController
     }
 
     /**
-     * One CSV line via the core's CsvUtility instead of hand-made quoting.
+     * One RFC 4180 CSV line with formula prefixes neutralised.
      *
      * Visitors fill in these values, and a cell starting with =, +, -, @, % or a
-     * tab is run as a formula by Excel and LibreOffice - quoting alone does not
-     * stop that (CSV injection). TYPE_PREFIX_CONTROLS puts an apostrophe in
-     * front, so the value stays readable text. TYPE_REMOVE_CONTROLS would delete
-     * the character instead and turn "+49 7721 ..." into a number without its
-     * country code. The previous code also escaped quotes with a backslash,
-     * which spreadsheet programs do not understand; fputcsv doubles them.
+     * tab/line break is run as a formula by Excel and LibreOffice - quoting
+     * alone does not stop that (CSV injection). An apostrophe in front keeps the
+     * value readable text. Removing the character instead would turn
+     * "+49 7721 ..." into a number without its country code.
+     *
+     * CsvUtility::csvValues() is not used for the serialisation: it calls
+     * fputcsv() with a backslash as escape character, so a value like x\",=1+1," is
+     * written as "x\",=1+1,""" and an RFC 4180 reader (Excel, LibreOffice)
+     * splits it into three cells with an unprotected =1+1 in the middle.
+     * An empty escape character makes fputcsv() double every quote, nothing else.
      *
      * @param list<string> $cells
      */
     protected function csvLine(array $cells, string $delimiter): string
     {
-        return rtrim(
-            CsvUtility::csvValues($cells, $delimiter, self::CSV_ENCLOSURE, CsvUtility::TYPE_PREFIX_CONTROLS),
-            "\r\n"
+        $stream = fopen('php://temp', 'w+');
+        if (!is_resource($stream)) {
+            throw new \RuntimeException('Cannot open temporary stream for the CSV export', 1759392000);
+        }
+        // Same enclosure rules as before: everything except numbers and empty cells is quoted.
+        $enforceEnclosure = CsvStreamFilter::applyStreamFilter($stream, false);
+        fputcsv(
+            $stream,
+            $enforceEnclosure(array_map(self::prefixFormulaCharacters(...), $cells)),
+            $delimiter,
+            self::CSV_ENCLOSURE,
+            ''
         );
+        rewind($stream);
+        $line = (string)stream_get_contents($stream);
+        fclose($stream);
+
+        return rtrim($line, "\r\n");
+    }
+
+    /**
+     * Copy of CsvUtility::prefixControlLiterals() and shallFilterValue(), which
+     * are protected and only reachable through csvValues() with its non-standard
+     * escaping. Numbers stay untouched, as in the core, so "+4917..." remains a
+     * number while "+49 7721 ..." gets the apostrophe.
+     */
+    private static function prefixFormulaCharacters(string $value): string
+    {
+        if (is_numeric($value)
+            || MathUtility::canBeInterpretedAsInteger($value)
+            || MathUtility::canBeInterpretedAsFloat($value)
+        ) {
+            return $value;
+        }
+
+        return (string)preg_replace('#^([\t\v=+*%/@-])#', '\'${1}', $value);
     }
 
     /**
